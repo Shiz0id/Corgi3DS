@@ -1,0 +1,49 @@
+; Geometry shader: expands each input point (center + color) into a square
+; of half-size `size.x`, emitted as two triangles.
+.gsh point c0
+
+.fvec size
+
+.out outpos position
+.out outclr color
+
+.alias inpos v0
+.alias inclr v1
+
+.entry gmain
+.proc gmain
+    ; vertex 0: (-s, -s)
+    mov r0, inpos
+    add r0.xy, -size.xx, inpos.xy
+    setemit 0
+    mov outpos, r0
+    mov outclr, inclr
+    emit
+
+    ; vertex 1: (+s, -s)
+    mov r0, inpos
+    add r0.x, size.x, inpos.x
+    add r0.y, -size.x, inpos.y
+    setemit 1
+    mov outpos, r0
+    mov outclr, inclr
+    emit
+
+    ; vertex 2: (-s, +s), completes triangle 1
+    mov r0, inpos
+    add r0.x, -size.x, inpos.x
+    add r0.y, size.x, inpos.y
+    setemit 2, prim
+    mov outpos, r0
+    mov outclr, inclr
+    emit
+
+    ; vertex 0: (+s, +s), completes triangle 2 together with 1 and 2
+    mov r0, inpos
+    add r0.xy, size.xx, inpos.xy
+    setemit 0, prim inv
+    mov outpos, r0
+    mov outclr, inclr
+    emit
+    end
+.end

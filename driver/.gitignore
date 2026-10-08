@@ -1,0 +1,7 @@
+build/
+lib/
+examples/*/build/
+examples/*/*.3dsx
+examples/*/*.smdh
+examples/*/*.elf
+tests/host/build/

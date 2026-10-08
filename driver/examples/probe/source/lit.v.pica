@@ -1,0 +1,20 @@
+; Pass-through shader for lighting probes: clip-space position, normal
+; quaternion and view vector come straight from the vertex buffer.
+.constf one(1.0, 1.0, 1.0, 1.0)
+
+.out outpos position
+.out outq normalquat
+.out outview view
+
+.alias inpos v0
+.alias inq v1
+.alias inview v2
+
+.proc main
+    mov r0.xyz, inpos
+    mov r0.w, one
+    mov outpos, r0
+    mov outq, inq
+    mov outview.xyz, inview
+    end
+.end

@@ -25,6 +25,9 @@ Azahar (the Citra successor).
 | `src/` | Implementation; `platform_ctru.c` and `platform_mmio.c` are the two backends |
 | `examples/triangle` | Minimal app: perspective scene on the top screen |
 | `examples/selftest` | Runs the test suite on the console/emulator, writes results to the SD card |
+| `examples/probe` | Hardware probe: sweeps undocumented behaviour (fragment lighting so far) and records the GPU's output |
+| `include/pica/lighting.h` | Fragment lighting register encoders (used by the probe) |
+| `probe-data/`, `tools/probe_compare.py` | Probe results (emulator baselines, hardware runs) and the tool that diffs them |
 | `tests/suite.c` | The rendering test suite (23 tests) |
 | `tests/host` | Runs the same suite on Corgi3DS's GPU emulation, on your PC |
 
@@ -138,8 +141,10 @@ and depth testing, and `tests/suite.c` for every feature in use.
 
 ### Not covered (yet)
 
-Fragment lighting, procedural textures, gas rendering and shadow textures
-have no helpers; their registers are in `regs.h` and can be programmed with
+Fragment lighting only has low-level register encoders
+(`pica/lighting.h`); a higher-level helper will follow once the probe has
+pinned down the hardware's behaviour (see `probe-data/README.md`).
+Procedural textures, gas rendering and shadow textures have no helpers; their registers are in `regs.h` and can be programmed with
 `pica_write_reg*()`. Cube map textures are not wrapped either.
 
 ## Testing

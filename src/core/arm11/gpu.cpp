@@ -109,6 +109,8 @@ void GPU::reset(uint8_t* vram)
     framebuffers[0].left_addr_a = 0x18000000;
     framebuffers[1].left_addr_a = 0x18000000;
 
+    ctx.scissor_mode = 0;
+
     memset(ctx.texcomb_rgb_buffer_update, 0, sizeof(ctx.texcomb_rgb_buffer_update));
     memset(ctx.texcomb_alpha_buffer_update, 0, sizeof(ctx.texcomb_alpha_buffer_update));
 }
@@ -268,10 +270,13 @@ void GPU::do_transfer_engine_dma(uint64_t param)
         for (unsigned int y = 0; y < dma.disp_output_height; y++)
         {
             printf("input y: %d output y: %d\n", input_y, y);
-            int input_x = 0;
             for (unsigned int x = 0; x < dma.disp_output_width; x++)
             {
                 uint32_t color = 0;
+
+                int input_x = x;
+                if (dma.flags & (1 << 24))
+                    input_x <<= 1;
 
                 if (!linear_to_tiled)
                     input_addr = get_swizzled_tile_addr(
@@ -393,10 +398,6 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                         EmuException::die("[GPU] Unrecognized output format %d\n", output_format);
                 }
 
-                input_x = x;
-
-                if (dma.flags & (1 << 24))
-                    input_x <<= 1;
             }
 
             if (dma.flags & 0x1)
@@ -727,6 +728,17 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             ctx.sh_output_mapping[index][2] = (param >> 16) & 0x1F;
             ctx.sh_output_mapping[index][3] = (param >> 24) & 0x1F;
         }
+            break;
+        case 0x065:
+            ctx.scissor_mode = param & 0x3;
+            break;
+        case 0x066:
+            ctx.scissor_x1 = param & 0x3FF;
+            ctx.scissor_y1 = (param >> 16) & 0x3FF;
+            break;
+        case 0x067:
+            ctx.scissor_x2 = param & 0x3FF;
+            ctx.scissor_y2 = (param >> 16) & 0x3FF;
             break;
         case 0x068:
             ctx.viewport_x = SignExtend<10>(param & 0x3FF);
@@ -1488,6 +1500,16 @@ float24 orient2D(const Vertex &v1, const Vertex &v2, const Vertex &v3)
     return (v2.pos[0] - v1.pos[0]) * (v3.pos[1] - v1.pos[1]) - (v3.pos[0] - v1.pos[0]) * (v2.pos[1] - v1.pos[1]);
 }
 
+//Edge function on 12.4 fixed point screen coordinates, computed exactly.
+//(float24 only has a 16-bit mantissa, which is not enough for the products involved.)
+static int64_t orient2D_fixed(const Vertex &v1, const Vertex &v2, const Vertex &v3)
+{
+    int64_t x1 = (int64_t)v1.pos[0].ToFloat32(), y1 = (int64_t)v1.pos[1].ToFloat32();
+    int64_t x2 = (int64_t)v2.pos[0].ToFloat32(), y2 = (int64_t)v2.pos[1].ToFloat32();
+    int64_t x3 = (int64_t)v3.pos[0].ToFloat32(), y3 = (int64_t)v3.pos[1].ToFloat32();
+    return (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1);
+}
+
 bool GPU::get_fill_rule_bias(Vertex &vtx, Vertex &line1, Vertex &line2)
 {
     //This function prevents pixels on the right-side or flat bottom side of a triangle from being drawn.
@@ -1595,9 +1617,21 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
             Vertex temp;
             temp.pos[0] = float24::FromFloat32(x);
             temp.pos[1] = float24::FromFloat32(y);
-            int32_t w1 = roundf(orient2D(v1, v2, temp).ToFloat32()) + bias0;
-            int32_t w2 = roundf(orient2D(v2, v0, temp).ToFloat32()) + bias1;
-            int32_t w3 = roundf(orient2D(v0, v1, temp).ToFloat32()) + bias2;
+            int32_t w1 = (int32_t)orient2D_fixed(v1, v2, temp) + bias0;
+            int32_t w2 = (int32_t)orient2D_fixed(v2, v0, temp) + bias1;
+            int32_t w3 = (int32_t)orient2D_fixed(v0, v1, temp) + bias2;
+
+            //Scissor test. The box is given in bottom-up framebuffer coordinates (inclusive),
+            //while y here runs top-down.
+            if (ctx.scissor_mode == 1 || ctx.scissor_mode == 3)
+            {
+                int px = x >> 4;
+                int py = ctx.frame_height - 1 - (y >> 4);
+                bool inside = px >= ctx.scissor_x1 && px <= ctx.scissor_x2 &&
+                              py >= ctx.scissor_y1 && py <= ctx.scissor_y2;
+                if (inside != (ctx.scissor_mode == 3))
+                    continue;
+            }
             //Is inside triangle?
             if ((w1 | w2 | w3) >= 0)
             {

@@ -168,6 +168,9 @@ struct GPU_Context
 
     float24 depth_scale, depth_offset;
 
+    uint8_t scissor_mode;
+    uint16_t scissor_x1, scissor_y1, scissor_x2, scissor_y2;
+
     uint8_t sh_output_total;
     uint8_t sh_output_mapping[7][4];
 
